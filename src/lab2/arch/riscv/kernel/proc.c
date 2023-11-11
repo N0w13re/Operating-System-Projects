@@ -29,6 +29,13 @@ void task_init() {
     // 5. 将 current 和 task[0] 指向 idle
 
     /* YOUR CODE HERE */
+    idle = (struct task_struct *)kalloc();
+    idle->state = TASK_RUNNING;
+    idle->counter = 0;
+    idle->priority = 0;
+    idle->pid = 0;
+    current = idle;
+    task[0] = idle;
 
     // 1. 参考 idle 的设置, 为 task[1] ~ task[NR_TASKS - 1] 进行初始化
     // 2. 其中每个线程的 state 为 TASK_RUNNING, 此外，为了单元测试的需要，counter 和 priority 进行如下赋值：
@@ -38,6 +45,15 @@ void task_init() {
     // 4. 其中 `ra` 设置为 __dummy （见 4.3.2）的地址,  `sp` 设置为 该线程申请的物理页的高地址
 
     /* YOUR CODE HERE */
+    for(int i=1; i<NR_TASKS; ++i) {
+        task[i] = (struct task_struct *)kalloc();
+        task[i]->state = TASK_RUNNING;
+        task[i]->counter = task_test_counter[i];
+        task[i]->priority = task_test_priority[i];
+        task[i]->pid = i;
+        task[i]->thread.ra = (uint64)__dummy;
+        task[i]->thread.sp = (uint64)task[i] + PGSIZE;
+    }
 
     printk("...proc_init done!\n");
 }
@@ -59,3 +75,84 @@ void dummy() {
         }
     }
 }
+
+// arch/riscv/kernel/proc.c
+
+extern void __switch_to(struct task_struct* prev, struct task_struct* next);
+
+void switch_to(struct task_struct* next) {
+    /* YOUR CODE HERE */
+    if(next != current) {
+        struct task_struct* prev = current;
+        current = next;
+        __switch_to(prev, next);
+    }
+}
+
+// arch/riscv/kernel/proc.c
+
+void do_timer(void) {
+    // 1. 如果当前线程是 idle 线程 直接进行调度
+    // 2. 如果当前线程不是 idle 对当前线程的运行剩余时间减1 若剩余时间仍然大于0 则直接返回 否则进行调度
+
+    /* YOUR CODE HERE */
+    if(current == idle) schedule();
+    else {
+        if(--current->counter > 0)  return;
+        else schedule();
+    }
+}
+
+// arch/riscv/kernel/proc.c
+#ifdef SJF
+void schedule(void) {
+    /* YOUR CODE HERE */
+    uint64 c = 0, next;
+    for(int i=1; i<NR_TASKS; ++i) {
+        uint64 cnt = task[i]->counter;
+        if(task[i]->state != TASK_RUNNING || cnt == 0) continue;
+        if(c == 0 || cnt < c) {
+            c = cnt;
+            next = i;
+        }
+    }
+    if(c) {
+        printk("switch to [PID = %d COUNTER = %d]\n", task[next]->pid, task[next]->counter);
+        switch_to(task[next]);
+    }
+    else {
+        for(int i=0; i<NR_TASKS; ++i) {
+            task[i]->counter = rand();
+        }
+        schedule();
+    }
+}
+#endif
+
+// arch/riscv/kernel/proc.c
+#ifdef PRIORITY
+void schedule(void) {
+    /* YOUR CODE HERE */
+    uint64 c, next, i;
+    while(1) {
+        c = 0;
+        next = 0;
+        i = NR_TASKS;
+        while(--i) {
+            if(!task[i]) continue;
+            uint64 cnt = task[i]->counter;
+            if(task[i]->state != TASK_RUNNING || cnt == 0) continue;
+            if(cnt > c) {
+                c = cnt;
+                next = i;
+            }
+        }
+        if(c) break;
+        for(i=NR_TASKS-1; i>0; --i) {
+            task[i]->counter = (task[i]->counter >> 1) + task[i]->priority;
+        }
+    }
+    printk("switch to [PID = %d COUNTER = %d PRIORITY = %d]\n", task[next]->pid, task[next]->counter, task[next]->priority);
+    switch_to(task[next]);
+}
+#endif
