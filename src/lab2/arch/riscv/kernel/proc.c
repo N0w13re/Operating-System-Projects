@@ -96,7 +96,7 @@ void do_timer(void) {
     // 2. 如果当前线程不是 idle 对当前线程的运行剩余时间减1 若剩余时间仍然大于0 则直接返回 否则进行调度
 
     /* YOUR CODE HERE */
-    if(current == idle) schedule();
+    if(current == idle || current->counter == 0) schedule();
     else {
         if(--current->counter > 0)  return;
         else schedule();
