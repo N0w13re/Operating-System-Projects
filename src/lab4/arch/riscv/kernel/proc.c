@@ -58,29 +58,29 @@ void task_init() {
         task[i]->pid = i;
         task[i]->thread.ra = (uint64)__dummy;
         task[i]->thread.sp = (uint64)task[i] + PGSIZE;
-        task[i]->thread.sepc = USER_START;
-        uint64 sstatus = csr_read(sstatus);
-        sstatus &= ~(1 << 8);       // SPP = 0
-        sstatus |= 1 << 5;          // SPIE = 1
-        sstatus |= 1 << 18;         // SUM = 1
-        task[i]->thread.sstatus = sstatus;
-        task[i]->thread.sscratch = USER_END;
+        // task[i]->thread.sepc = USER_START;
+        // uint64 sstatus = csr_read(sstatus);
+        // sstatus &= ~(1 << 8);       // SPP = 0
+        // sstatus |= 1 << 5;          // SPIE = 1
+        // sstatus |= 1 << 18;         // SUM = 1
+        // task[i]->thread.sstatus = sstatus;
+        // task[i]->thread.sscratch = USER_END;
         task[i]->pgd = (pagetable_t)alloc_page();        // 创建属于每个进程的页表
         for(int j=0; j<512; ++j) {          // 将内核页表复制到每个进程的页表中
             task[i]->pgd[j] = swapper_pg_dir[j];
         }
-        uint64_t num;
-        if(((uint64)_eramdisk - (uint64)_sramdisk) % PGSIZE == 0) num = ((uint64)_eramdisk - (uint64)_sramdisk) / PGSIZE;
-        else num = ((uint64)_eramdisk - (uint64)_sramdisk) / PGSIZE + 1;
-        char *_uapp = (char *)alloc_pages(num);
-        for(int j=0; j<(uint64)_eramdisk - (uint64)_sramdisk; ++j) {    // 二进制文件需要先被拷贝到一块某个进程专用的内存之后再进行映射
-            _uapp[j] = _sramdisk[j];
-        }
-        create_mapping(task[i]->pgd, USER_START, (uint64)_uapp-PA2VA_OFFSET, num * PGSIZE, 0x1F);   // 将 _uapp 所在的页面映射到每个进行的页表中
-        task[i]->thread_info.kernel_sp = (uint64)task[i] + PGSIZE;      // 设置内核态栈
-        task[i]->thread_info.user_sp = (uint64)alloc_page();            // 设置用户态栈
-        create_mapping(task[i]->pgd, USER_END-PGSIZE, task[i]->thread_info.user_sp-PA2VA_OFFSET, PGSIZE, 0x17);      // 映射到进程页表中（无执行权限）
-        // load_program(task[i], task[i]->pgd);
+        // uint64_t num;
+        // if(((uint64)_eramdisk - (uint64)_sramdisk) % PGSIZE == 0) num = ((uint64)_eramdisk - (uint64)_sramdisk) / PGSIZE;
+        // else num = ((uint64)_eramdisk - (uint64)_sramdisk) / PGSIZE + 1;
+        // char *_uapp = (char *)alloc_pages(num);
+        // for(int j=0; j<(uint64)_eramdisk - (uint64)_sramdisk; ++j) {    // 二进制文件需要先被拷贝到一块某个进程专用的内存之后再进行映射
+        //     _uapp[j] = _sramdisk[j];
+        // }
+        // create_mapping(task[i]->pgd, USER_START, (uint64)_uapp-PA2VA_OFFSET, num * PGSIZE, 0x1F);   // 将 _uapp 所在的页面映射到每个进行的页表中
+        // task[i]->thread_info.kernel_sp = (uint64)task[i] + PGSIZE;      // 设置内核态栈
+        // task[i]->thread_info.user_sp = (uint64)alloc_page();            // 设置用户态栈
+        // create_mapping(task[i]->pgd, USER_END-PGSIZE, task[i]->thread_info.user_sp-PA2VA_OFFSET, PGSIZE, 0x17);      // 映射到进程页表中（无执行权限）
+        load_program(task[i], task[i]->pgd);
     }
 
     printk("...proc_init done!\n");
@@ -111,7 +111,12 @@ static uint64_t load_program(struct task_struct* task, pagetable_t pgtbl) {
 
             uint64 va = phdr->p_vaddr;
             uint64 offset = va % PGSIZE;            // va相对于整数倍PGSIZE的页数
-            for(int j = num * PGSIZE - 1; j >= offset; --j){      // 整体右移offset，因为映射需要的是页的基地址
+            if(va + phdr->p_memsz + offset > num * PGSIZE) {    // 由于需要右移，原来分配的页数可能不够
+                num++;
+                free_pages((uint64)_uapp);
+                _uapp = (char *)alloc_pages(num);
+            }
+            for(int j = num * PGSIZE - 1; j >= offset; --j) {      // 整体右移offset，因为映射需要的是页的基地址
                 _uapp[j] = _uapp[j-offset];
             }
             memset(_uapp, 0, offset);           // 第一页开头部分清零
