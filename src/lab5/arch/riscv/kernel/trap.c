@@ -25,9 +25,9 @@ void do_page_fault(struct pt_regs *regs) {
         if(!(vma->vm_flags & VM_ANONYM)) {      // 不是匿名空间
             // 将 segment 的内容从ELF文件中读入到[p_vaddr, p_vaddr + p_memsz) 这一连续区间
             char *src = _sramdisk + vma->vm_content_offset_in_file;
-            if(bad_addr - vma->vm_start < PGSIZE) {         // 如果bad_addr跟vma的开头可以放在同一页内
+            if(vma->vm_start > PGROUNDDOWN(bad_addr)) {     // 如果bad_addr跟vma的开头可以放在同一页内
                 uint64 offset = vma->vm_start % PGSIZE;     // 计算开头偏移量
-                if(vma->vm_end - offset < PGSIZE)           // 整个uapp可以放进一个页里
+                if(vma->vm_end < PGROUNDUP(bad_addr))       // 如果整个uapp可以放进一个页里
                     for(uint64 i=0; i<vma->vm_end - vma->vm_start; ++i)
                         alloc[offset+i] = src[i];
                 else        // 放不下，则应该将[offset, PGSIZE]的部分拷贝进去
@@ -35,7 +35,7 @@ void do_page_fault(struct pt_regs *regs) {
                         alloc[offset+i] = src[i];
             }
             else {          // vma开头在前面的页中，表明该页一开始便应该拷贝uapp的内容
-                if(vma->vm_end - bad_addr < PGSIZE)         // 如果bad_addr跟vma的末尾可以放在同一页内
+                if(vma->vm_end < PGROUNDUP(bad_addr))           // 如果bad_addr跟vma的末尾可以放在同一页内
                     for(uint64 i=0; i<vma->vm_end % PGSIZE; ++i)    // 将[0, vm_end%PGSIZE]拷贝进去
                         alloc[i] = src[i];
                 else        // 放不下，则拷贝[0, PGSIZE]内容
