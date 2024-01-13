@@ -193,4 +193,8 @@ static inline uint64_t io_to_virt(uint64_t pa) {
     return pa + IOMAP_OFFSET;
 }
 
+static inline uint64_t virt_to_phys(uint64_t pa) {
+    return pa - PA2VA_OFFSET;
+}
+
 #endif

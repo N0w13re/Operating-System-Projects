@@ -14,6 +14,7 @@ CFLAG = ${CF} ${INCLUDE}
 
 .PHONY:all run debug clean flash noflash qemu
 all: clean
+	${MAKE} -C test all
 	${MAKE} -C user all
 	${MAKE} -C lib all
 	${MAKE} -C init all
@@ -45,6 +46,7 @@ run: all
 		-device virtio-blk-device,drive=hd0
 
 clean:
+	${MAKE} -C test clean
 	${MAKE} -C lib clean
 	${MAKE} -C user clean
 	${MAKE} -C fs clean
